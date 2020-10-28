@@ -1340,9 +1340,38 @@ void ar5008_hw_init_rate_txpower(struct ath_hw *ah, int16_t *rate_array,
 	}
 }
 
+static int __maybe_unused
+ar5008_hw_get_adc_entropy(struct ath_hw *ah, u32 *buf, const u32 buf_size, u32 *rng_last)
+{
+	int i, j;
+	u32 v1, v2, last = *rng_last;
+
+	REG_RMW_FIELD(ah, AR_PHY_TEST(ah), AR_PHY_TEST_BBB_OBS_SEL, 1);
+	REG_CLR_BIT(ah, AR_PHY_TEST(ah), AR_PHY_TEST_RX_OBS_SEL_BIT5);
+	REG_RMW_FIELD(ah, AR_PHY_TEST2, AR_PHY_TEST2_RX_OBS_SEL, 0);
+
+	for (i = 0, j = 0; i < buf_size; i++) {
+		v1 = REG_READ(ah, AR_PHY_TST_ADC) & 0xffff;
+		v2 = REG_READ(ah, AR_PHY_TST_ADC) & 0xffff;
+
+		/* wait for data ready */
+		if (v1 && v2 && last != v1 && v1 != v2 && v1 != 0xffff &&
+		    v2 != 0xffff)
+			buf[j++] = (v1 << 16) | v2;
+
+		last = v2;
+	}
+
+	*rng_last = last;
+
+	return j << 2;
+}
+
 int ar5008_hw_attach_phy_ops(struct ath_hw *ah)
 {
 	struct ath_hw_private_ops *priv_ops = ath9k_hw_private_ops(ah);
+	struct ath_hw_ops *ops __maybe_unused;
+
 	static const u32 ar5416_cca_regs[6] = {
 		AR_PHY_CCA,
 		AR_PHY_CH1_CCA,
@@ -1356,6 +1385,11 @@ int ar5008_hw_attach_phy_ops(struct ath_hw *ah)
 	ret = ar5008_hw_rf_alloc_ext_banks(ah);
 	if (ret)
 	    return ret;
+
+#ifdef CONFIG_ATH9K_HWRNG
+	ops = ath9k_hw_ops(ah);
+	ops->get_adc_entropy = ar5008_hw_get_adc_entropy;
+#endif
 
 	priv_ops->rf_set_freq = ar5008_hw_set_channel;
 	priv_ops->spur_mitigate_freq = ar5008_hw_spur_mitigate;
