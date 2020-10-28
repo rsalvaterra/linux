@@ -719,6 +719,7 @@ struct ath_spec_scan {
  * @spectral_scan_config: set parameters for spectral scan and enable/disable it
  * @spectral_scan_trigger: trigger a spectral scan run
  * @spectral_scan_wait: wait for a spectral scan run to finish
+ * @get_adc_entropy: get entropy from the raw ADC I/Q output
  */
 struct ath_hw_ops {
 	void (*config_pci_powersave)(struct ath_hw *ah,
@@ -749,6 +750,10 @@ struct ath_hw_ops {
 
 #ifdef CONFIG_ATH9K_BTCOEX_SUPPORT
 	void (*set_bt_ant_diversity)(struct ath_hw *hw, bool enable);
+#endif
+
+#ifdef CONFIG_ATH9K_HWRNG
+	int (*get_adc_entropy)(struct ath_hw *ah, u32 *buf, const u32 buf_size, u32 *rng_last);
 #endif
 };
 
