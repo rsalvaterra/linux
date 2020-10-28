@@ -1915,6 +1915,33 @@ void ar9003_hw_init_rate_txpower(struct ath_hw *ah, u8 *rate_array,
 	}
 }
 
+static int __maybe_unused
+ar9003_hw_get_adc_entropy(struct ath_hw *ah, u32 *buf, const u32 buf_size, u32 *rng_last)
+{
+	int i, j;
+	u32  v1, v2, last = *rng_last;
+
+	REG_RMW_FIELD(ah, AR_PHY_TEST(ah), AR_PHY_TEST_BBB_OBS_SEL, 1);
+	REG_CLR_BIT(ah, AR_PHY_TEST(ah), AR_PHY_TEST_RX_OBS_SEL_BIT5);
+	REG_RMW_FIELD(ah, AR_PHY_TEST_CTL_STATUS(ah), AR_PHY_TEST_CTL_RX_OBS_SEL, 0);
+
+	for (i = 0, j = 0; i < buf_size; i++) {
+		v1 = REG_READ(ah, AR_PHY_TST_ADC) & 0xffff;
+		v2 = REG_READ(ah, AR_PHY_TST_ADC) & 0xffff;
+
+		/* wait for data ready */
+		if (v1 && v2 && last != v1 && v1 != v2 && v1 != 0xffff &&
+		    v2 != 0xffff)
+			buf[j++] = (v1 << 16) | v2;
+
+		last = v2;
+	}
+
+	*rng_last = last;
+
+	return j << 2;
+}
+
 void ar9003_hw_attach_phy_ops(struct ath_hw *ah)
 {
 	struct ath_hw_private_ops *priv_ops = ath9k_hw_private_ops(ah);
@@ -1960,6 +1987,11 @@ void ar9003_hw_attach_phy_ops(struct ath_hw *ah)
 #ifdef CONFIG_ATH9K_BTCOEX_SUPPORT
 	ops->set_bt_ant_diversity = ar9003_hw_set_bt_ant_diversity;
 #endif
+
+#ifdef CONFIG_ATH9K_HWRNG
+	ops->get_adc_entropy = ar9003_hw_get_adc_entropy;
+#endif
+
 	ops->tx99_start = ar9003_hw_tx99_start;
 	ops->tx99_stop = ar9003_hw_tx99_stop;
 	ops->tx99_set_txpower = ar9003_hw_tx99_set_txpower;
