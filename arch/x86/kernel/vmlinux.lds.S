@@ -250,14 +250,14 @@ SECTIONS
 	 * See static_cpu_has() for an example.
 	 */
 	.altinstr_aux : AT(ADDR(.altinstr_aux) - LOAD_OFFSET) {
-		*(.altinstr_aux)
+		KEEP(*(.altinstr_aux))
 	}
 
 	INIT_DATA_SECTION(16)
 
 	.x86_cpu_dev.init : AT(ADDR(.x86_cpu_dev.init) - LOAD_OFFSET) {
 		__x86_cpu_dev_start = .;
-		*(.x86_cpu_dev.init)
+		KEEP(*(.x86_cpu_dev.init))
 		__x86_cpu_dev_end = .;
 	}
 
@@ -265,7 +265,7 @@ SECTIONS
 	.x86_intel_mid_dev.init : AT(ADDR(.x86_intel_mid_dev.init) - \
 								LOAD_OFFSET) {
 		__x86_intel_mid_dev_start = .;
-		*(.x86_intel_mid_dev.init)
+		KEEP(*(.x86_intel_mid_dev.init))
 		__x86_intel_mid_dev_end = .;
 	}
 #endif
@@ -279,7 +279,7 @@ SECTIONS
 	. = ALIGN(8);
 	.parainstructions : AT(ADDR(.parainstructions) - LOAD_OFFSET) {
 		__parainstructions = .;
-		*(.parainstructions)
+		KEEP(*(.parainstructions))
 		__parainstructions_end = .;
 	}
 
@@ -337,7 +337,7 @@ SECTIONS
 	. = ALIGN(8);
 	.altinstructions : AT(ADDR(.altinstructions) - LOAD_OFFSET) {
 		__alt_instructions = .;
-		*(.altinstructions)
+		KEEP(*(.altinstructions))
 		__alt_instructions_end = .;
 	}
 
@@ -347,13 +347,13 @@ SECTIONS
 	 * get the address and the length of them to patch the kernel safely.
 	 */
 	.altinstr_replacement : AT(ADDR(.altinstr_replacement) - LOAD_OFFSET) {
-		*(.altinstr_replacement)
+		KEEP(*(.altinstr_replacement))
 	}
 
 	. = ALIGN(8);
 	.apicdrivers : AT(ADDR(.apicdrivers) - LOAD_OFFSET) {
 		__apicdrivers = .;
-		*(.apicdrivers);
+		KEEP(*(.apicdrivers))
 		__apicdrivers_end = .;
 	}
 
@@ -388,7 +388,7 @@ SECTIONS
 	. = ALIGN(PAGE_SIZE);
 	.smp_locks : AT(ADDR(.smp_locks) - LOAD_OFFSET) {
 		__smp_locks = .;
-		*(.smp_locks)
+		KEEP(*(.smp_locks))
 		. = ALIGN(PAGE_SIZE);
 		__smp_locks_end = .;
 	}
@@ -423,7 +423,7 @@ SECTIONS
 	.brk : AT(ADDR(.brk) - LOAD_OFFSET) {
 		__brk_base = .;
 		. += 64 * 1024;		/* 64k alignment slop space */
-		*(.bss..brk)		/* areas brk users have reserved */
+		KEEP(*(.bss..brk))	/* areas brk users have reserved */
 		__brk_limit = .;
 	}
 
@@ -449,7 +449,7 @@ SECTIONS
 	. = ALIGN(HPAGE_SIZE);
 	.init.scratch : AT(ADDR(.init.scratch) - LOAD_OFFSET) {
 		__init_scratch_begin = .;
-		*(.init.scratch)
+		KEEP(*(.init.scratch))
 		. = ALIGN(HPAGE_SIZE);
 		__init_scratch_end = .;
 	}
