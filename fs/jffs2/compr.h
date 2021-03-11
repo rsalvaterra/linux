@@ -31,6 +31,7 @@
 #define JFFS2_RTIME_PRIORITY     50
 #define JFFS2_ZLIB_PRIORITY      60
 #define JFFS2_LZO_PRIORITY       80
+#define JFFS2_ZSTD_PRIORITY      90
 
 
 #define JFFS2_RUBINMIPS_DISABLED /* RUBINs will be used only */
@@ -42,6 +43,7 @@
 #define JFFS2_COMPR_MODE_FAVOURLZO  3
 #define JFFS2_COMPR_MODE_FORCELZO   4
 #define JFFS2_COMPR_MODE_FORCEZLIB  5
+#define JFFS2_COMPR_MODE_FORCEZSTD  6
 
 #define FAVOUR_LZO_PERCENT 80
 
@@ -114,6 +116,13 @@ extern void jffs2_lzo_exit(void);
 #else
 static inline int jffs2_lzo_init(void) { return 0; }
 static inline void jffs2_lzo_exit(void) {}
+#endif
+#ifdef CONFIG_JFFS2_ZSTD
+extern int jffs2_zstd_init(void);
+extern void jffs2_zstd_exit(void);
+#else
+static inline int jffs2_zstd_init(void) { return 0; }
+static inline void jffs2_zstd_exit(void) {}
 #endif
 
 #endif /* __JFFS2_COMPR_H__ */
