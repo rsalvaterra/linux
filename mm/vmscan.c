@@ -53,6 +53,7 @@
 #include <linux/psi.h>
 #include <linux/pagewalk.h>
 #include <linux/memory.h>
+#include <linux/debugfs.h>
 
 #include <asm/tlbflush.h>
 #include <asm/div64.h>
@@ -5851,6 +5852,334 @@ lru_gen_online_mem(struct notifier_block *self, unsigned long action, void *arg)
 }
 
 /******************************************************************************
+ *                          sysfs interface
+ ******************************************************************************/
+
+static ssize_t show_lru_gen_spread(struct kobject *kobj, struct kobj_attribute *attr,
+				   char *buf)
+{
+	return sprintf(buf, "%d\n", READ_ONCE(lru_gen_spread));
+}
+
+static ssize_t store_lru_gen_spread(struct kobject *kobj, struct kobj_attribute *attr,
+				    const char *buf, size_t len)
+{
+	int spread;
+
+	if (kstrtoint(buf, 10, &spread) || spread >= MAX_NR_GENS)
+		return -EINVAL;
+
+	WRITE_ONCE(lru_gen_spread, spread);
+
+	return len;
+}
+
+static struct kobj_attribute lru_gen_spread_attr = __ATTR(
+	spread, 0644,
+	show_lru_gen_spread, store_lru_gen_spread
+);
+
+static ssize_t show_lru_gen_enabled(struct kobject *kobj, struct kobj_attribute *attr,
+				    char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%ld\n", lru_gen_enabled());
+}
+
+static ssize_t store_lru_gen_enabled(struct kobject *kobj, struct kobj_attribute *attr,
+				     const char *buf, size_t len)
+{
+	int enable;
+
+	if (kstrtoint(buf, 10, &enable))
+		return -EINVAL;
+
+	lru_gen_set_state(enable, true, false);
+
+	return len;
+}
+
+static struct kobj_attribute lru_gen_enabled_attr = __ATTR(
+	enabled, 0644, show_lru_gen_enabled, store_lru_gen_enabled
+);
+
+static struct attribute *lru_gen_attrs[] = {
+	&lru_gen_spread_attr.attr,
+	&lru_gen_enabled_attr.attr,
+	NULL
+};
+
+static struct attribute_group lru_gen_attr_group = {
+	.name = "lru_gen",
+	.attrs = lru_gen_attrs,
+};
+
+/******************************************************************************
+ *                          debugfs interface
+ ******************************************************************************/
+
+static void *lru_gen_seq_start(struct seq_file *m, loff_t *pos)
+{
+	struct mem_cgroup *memcg;
+	loff_t nr_to_skip = *pos;
+
+	m->private = kzalloc(PATH_MAX, GFP_KERNEL);
+	if (!m->private)
+		return ERR_PTR(-ENOMEM);
+
+	memcg = mem_cgroup_iter(NULL, NULL, NULL);
+	do {
+		int nid;
+
+		for_each_node_state(nid, N_MEMORY) {
+			if (!nr_to_skip--)
+				return mem_cgroup_lruvec(memcg, NODE_DATA(nid));
+		}
+	} while ((memcg = mem_cgroup_iter(NULL, memcg, NULL)));
+
+	return NULL;
+}
+
+static void lru_gen_seq_stop(struct seq_file *m, void *v)
+{
+	if (!IS_ERR_OR_NULL(v))
+		mem_cgroup_iter_break(NULL, lruvec_memcg(v));
+
+	kfree(m->private);
+	m->private = NULL;
+}
+
+static void *lru_gen_seq_next(struct seq_file *m, void *v, loff_t *pos)
+{
+	int nid = lruvec_pgdat(v)->node_id;
+	struct mem_cgroup *memcg = lruvec_memcg(v);
+
+	++*pos;
+
+	nid = next_memory_node(nid);
+	if (nid == MAX_NUMNODES) {
+		memcg = mem_cgroup_iter(NULL, memcg, NULL);
+		if (!memcg)
+			return NULL;
+
+		nid = first_memory_node;
+	}
+
+	return mem_cgroup_lruvec(memcg, NODE_DATA(nid));
+}
+
+static int lru_gen_seq_show(struct seq_file *m, void *v)
+{
+	unsigned long seq;
+	struct lruvec *lruvec = v;
+	int nid = lruvec_pgdat(lruvec)->node_id;
+	struct mem_cgroup *memcg = lruvec_memcg(lruvec);
+	DEFINE_MAX_SEQ(lruvec);
+	DEFINE_MIN_SEQ(lruvec);
+
+	if (nid == first_memory_node) {
+#ifdef CONFIG_MEMCG
+		if (memcg)
+			cgroup_path(memcg->css.cgroup, m->private, PATH_MAX);
+#endif
+		seq_printf(m, "memcg %5hu %s\n",
+			   mem_cgroup_id(memcg), (char *)m->private);
+	}
+
+	seq_printf(m, "  node %4d\n", nid);
+
+	for (seq = min(min_seq[0], min_seq[1]); seq <= max_seq; seq++) {
+		int gen, file, zone;
+		unsigned int msecs;
+		long sizes[ANON_AND_FILE] = {};
+
+		gen = lru_gen_from_seq(seq);
+
+		msecs = jiffies_to_msecs(jiffies - READ_ONCE(
+				lruvec->evictable.timestamps[gen]));
+
+		for_each_type_zone(file, zone)
+			sizes[file] += READ_ONCE(
+				lruvec->evictable.sizes[gen][file][zone]);
+
+		sizes[0] = max(sizes[0], 0L);
+		sizes[1] = max(sizes[1], 0L);
+
+		seq_printf(m, "%11lu %9u %9lu %9lu\n",
+			   seq, msecs, sizes[0], sizes[1]);
+	}
+
+	return 0;
+}
+
+static const struct seq_operations lru_gen_seq_ops = {
+	.start = lru_gen_seq_start,
+	.stop = lru_gen_seq_stop,
+	.next = lru_gen_seq_next,
+	.show = lru_gen_seq_show,
+};
+
+static int lru_gen_debugfs_open(struct inode *inode, struct file *file)
+{
+	return seq_open(file, &lru_gen_seq_ops);
+}
+
+static int advance_max_seq(struct lruvec *lruvec, unsigned long seq, int swappiness)
+{
+	struct scan_control sc = {
+		.target_mem_cgroup = lruvec_memcg(lruvec),
+	};
+	DEFINE_MAX_SEQ(lruvec);
+
+	if (seq == max_seq)
+		walk_mm_list(lruvec, max_seq, &sc, swappiness);
+
+	return seq > max_seq ? -EINVAL : 0;
+}
+
+static int advance_min_seq(struct lruvec *lruvec, unsigned long seq, int swappiness,
+			   unsigned long nr_to_reclaim)
+{
+	struct blk_plug plug;
+	int err = -EINTR;
+	long nr_to_scan = LONG_MAX;
+	struct scan_control sc = {
+		.nr_to_reclaim = nr_to_reclaim,
+		.target_mem_cgroup = lruvec_memcg(lruvec),
+		.may_writepage = 1,
+		.may_unmap = 1,
+		.may_swap = 1,
+		.reclaim_idx = MAX_NR_ZONES - 1,
+		.gfp_mask = GFP_KERNEL,
+	};
+	DEFINE_MAX_SEQ(lruvec);
+
+	if (seq >= max_seq - 1)
+		return -EINVAL;
+
+	blk_start_plug(&plug);
+
+	while (!signal_pending(current)) {
+		DEFINE_MIN_SEQ(lruvec);
+
+		if (seq < min(min_seq[!swappiness], min_seq[swappiness < 200]) ||
+		    !evict_lru_gen_pages(lruvec, &sc, swappiness, &nr_to_scan)) {
+			err = 0;
+			break;
+		}
+
+		cond_resched();
+	}
+
+	blk_finish_plug(&plug);
+
+	return err;
+}
+
+static int advance_seq(char cmd, int memcg_id, int nid, unsigned long seq,
+		       int swappiness, unsigned long nr_to_reclaim)
+{
+	struct lruvec *lruvec;
+	int err = -EINVAL;
+	struct mem_cgroup *memcg = NULL;
+
+	if (!mem_cgroup_disabled()) {
+		rcu_read_lock();
+		memcg = mem_cgroup_from_id(memcg_id);
+#ifdef CONFIG_MEMCG
+		if (memcg && !css_tryget(&memcg->css))
+			memcg = NULL;
+#endif
+		rcu_read_unlock();
+
+		if (!memcg)
+			goto done;
+	}
+	if (memcg_id != mem_cgroup_id(memcg))
+		goto done;
+
+	if (nid < 0 || nid >= MAX_NUMNODES || !node_state(nid, N_MEMORY))
+		goto done;
+
+	lruvec = mem_cgroup_lruvec(memcg, NODE_DATA(nid));
+
+	if (swappiness == -1)
+		swappiness = get_swappiness(lruvec);
+	else if (swappiness > 200U)
+		goto done;
+
+	switch (cmd) {
+	case '+':
+		err = advance_max_seq(lruvec, seq, swappiness);
+		break;
+	case '-':
+		err = advance_min_seq(lruvec, seq, swappiness, nr_to_reclaim);
+		break;
+	}
+done:
+	mem_cgroup_put(memcg);
+
+	return err;
+}
+
+static ssize_t lru_gen_debugfs_write(struct file *file, const char __user *src,
+				     size_t len, loff_t *pos)
+{
+	void *buf;
+	char *cur, *next;
+	int err = 0;
+
+	buf = kvmalloc(len + 1, GFP_USER);
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_user(buf, src, len)) {
+		kvfree(buf);
+		return -EFAULT;
+	}
+
+	next = buf;
+	next[len] = '\0';
+
+	while ((cur = strsep(&next, ",;\n"))) {
+		int n;
+		int end;
+		char cmd;
+		int memcg_id;
+		int nid;
+		unsigned long seq;
+		int swappiness = -1;
+		unsigned long nr_to_reclaim = -1;
+
+		cur = skip_spaces(cur);
+		if (!*cur)
+			continue;
+
+		n = sscanf(cur, "%c %u %u %lu %n %u %n %lu %n", &cmd, &memcg_id, &nid,
+			   &seq, &end, &swappiness, &end, &nr_to_reclaim, &end);
+		if (n < 4 || cur[end]) {
+			err = -EINVAL;
+			break;
+		}
+
+		err = advance_seq(cmd, memcg_id, nid, seq, swappiness, nr_to_reclaim);
+		if (err)
+			break;
+	}
+
+	kvfree(buf);
+
+	return err ? : len;
+}
+
+static const struct file_operations lru_gen_debugfs_ops = {
+	.open = lru_gen_debugfs_open,
+	.read = seq_read,
+	.write = lru_gen_debugfs_write,
+	.llseek = seq_lseek,
+	.release = seq_release,
+};
+
+/******************************************************************************
  *                          initialization
  ******************************************************************************/
 
@@ -5889,6 +6218,11 @@ static int __init init_lru_gen(void)
 
 	if (hotplug_memory_notifier(lru_gen_online_mem, 0))
 		pr_err("lru_gen: failed to subscribe hotplug notifications\n");
+
+	if (sysfs_create_group(mm_kobj, &lru_gen_attr_group))
+		pr_err("lru_gen: failed to create sysfs group\n");
+
+	debugfs_create_file("lru_gen", 0644, NULL, NULL, &lru_gen_debugfs_ops);
 
 	return 0;
 };
