@@ -859,4 +859,33 @@ config ARCH_HAS_HUGEPD
 config MAPPING_DIRTY_HELPERS
         bool
 
+config LRU_GEN
+	bool "Multigenerational LRU"
+	depends on MMU
+	help
+	  High performance multigenerational LRU to heavily overcommit workloads
+	  that are not IO bound. See Documentation/vm/multigen_lru.rst for
+	  details.
+
+	  Warning: do not enable this option unless you plan to use it because
+	  it introduces a small per-process memory overhead.
+
+config NR_LRU_GENS
+	int "Max number of generations"
+	depends on LRU_GEN
+	range 4 63
+	default 7
+	help
+	  This will use ilog2(N)+1 spare bits from page flags.
+
+	  Warning: do not use numbers larger than necessary because each
+	  generation introduces a small per-node and per-memcg memory overhead.
+
+config LRU_GEN_ENABLED
+	bool "Turn on by default"
+	depends on LRU_GEN
+	help
+	  The default value of /sys/kernel/mm/lru_gen/enabled is 0. This option
+	  changes it to 1.
+
 endmenu
