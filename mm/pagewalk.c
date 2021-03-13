@@ -160,6 +160,11 @@ static int walk_pud_range(p4d_t *p4d, unsigned long addr, unsigned long end,
 		err = walk_pmd_range(pud, addr, next, walk);
 		if (err)
 			break;
+
+		if (ops->pud_entry_post)
+			err = ops->pud_entry_post(pud, addr, next, walk);
+		if (err)
+			break;
 	} while (pud++, addr = next, addr != end);
 
 	return err;

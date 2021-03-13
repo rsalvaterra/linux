@@ -11,6 +11,8 @@ struct mm_walk;
  * @pgd_entry:		if set, called for each non-empty PGD (top-level) entry
  * @p4d_entry:		if set, called for each non-empty P4D entry
  * @pud_entry:		if set, called for each non-empty PUD entry
+ * @pud_entry_post:	if set, called for each non-empty PUD entry after
+ *			pmd_entry is called, for post-order traversal.
  * @pmd_entry:		if set, called for each non-empty PMD entry
  *			this handler is required to be able to handle
  *			pmd_trans_huge() pmds.  They may simply choose to
@@ -41,6 +43,8 @@ struct mm_walk_ops {
 			 unsigned long next, struct mm_walk *walk);
 	int (*pud_entry)(pud_t *pud, unsigned long addr,
 			 unsigned long next, struct mm_walk *walk);
+	int (*pud_entry_post)(pud_t *pud, unsigned long addr,
+			      unsigned long next, struct mm_walk *walk);
 	int (*pmd_entry)(pmd_t *pmd, unsigned long addr,
 			 unsigned long next, struct mm_walk *walk);
 	int (*pte_entry)(pte_t *pte, unsigned long addr,
