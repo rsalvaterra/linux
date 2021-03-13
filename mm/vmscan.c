@@ -1892,7 +1892,7 @@ static unsigned noinline_for_stack move_pages_to_lru(struct lruvec *lruvec,
 				list_add(&page->lru, &pages_to_free);
 		} else {
 			nr_moved += nr_pages;
-			if (PageActive(page))
+			if (page_is_active(page, lruvec))
 				workingset_age_nonresident(lruvec, nr_pages);
 		}
 	}
@@ -4703,6 +4703,57 @@ static int page_update_lru_gen(struct page *page, int new_gen)
 	/* sort_page_by_gen() will sort this page during eviction */
 
 	return old_gen;
+}
+
+void lru_gen_scan_around(struct page_vma_mapped_walk *pvmw)
+{
+	pte_t *pte;
+	unsigned long start, end;
+	int old_gen, new_gen;
+	unsigned long flags;
+	struct lruvec *lruvec;
+	struct mem_cgroup *memcg;
+	struct pglist_data *pgdat = page_pgdat(pvmw->page);
+
+	lockdep_assert_held(pvmw->ptl);
+	VM_BUG_ON_VMA(pvmw->address < pvmw->vma->vm_start, pvmw->vma);
+
+	start = max(pvmw->address & PMD_MASK, pvmw->vma->vm_start);
+	end = pmd_addr_end(pvmw->address, pvmw->vma->vm_end);
+	pte = pvmw->pte - ((pvmw->address - start) >> PAGE_SHIFT);
+
+	memcg = lock_page_memcg(pvmw->page);
+	lruvec = lock_page_lruvec_irqsave(pvmw->page, &flags);
+
+	new_gen = lru_gen_from_seq(lruvec->evictable.max_seq);
+
+	for (; start != end; pte++, start += PAGE_SIZE) {
+		struct page *page;
+		unsigned long pfn = pte_pfn(*pte);
+
+		if (!pte_present(*pte) || !pte_young(*pte) || is_zero_pfn(pfn))
+			continue;
+
+		if (pfn < pgdat->node_start_pfn || pfn >= pgdat_end_pfn(pgdat))
+			continue;
+
+		page = compound_head(pte_page(*pte));
+		if (page_to_nid(page) != pgdat->node_id)
+			continue;
+		if (page_memcg_rcu(page) != memcg)
+			continue;
+		/*
+		 * We may be holding many locks. So try to finish as fast as
+		 * possible and leave the accessed and the dirty bits to page
+		 * table walk.
+		 */
+		old_gen = page_update_lru_gen(page, new_gen);
+		if (old_gen >= 0 && old_gen != new_gen)
+			lru_gen_update_size(page, lruvec, old_gen, new_gen);
+	}
+
+	unlock_page_lruvec_irqrestore(lruvec, flags);
+	unlock_page_memcg(pvmw->page);
 }
 
 struct mm_walk_args {

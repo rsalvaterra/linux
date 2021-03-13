@@ -163,6 +163,49 @@ static inline int page_lru_gen(struct page *page)
 	return ((READ_ONCE(page->flags) & LRU_GEN_MASK) >> LRU_GEN_PGOFF) - 1;
 }
 
+/* This function works regardless whether multigenerational lru is enabled. */
+static inline bool page_is_active(struct page *page, struct lruvec *lruvec)
+{
+	struct mem_cgroup *memcg;
+	int gen = page_lru_gen(page);
+	bool active = false;
+
+	VM_BUG_ON_PAGE(PageTail(page), page);
+
+	if (gen < 0)
+		return PageActive(page);
+
+	if (lruvec) {
+		VM_BUG_ON_PAGE(PageUnevictable(page), page);
+		VM_BUG_ON_PAGE(PageActive(page), page);
+		lockdep_assert_held(&lruvec->lru_lock);
+
+		return lru_gen_is_active(lruvec, gen);
+	}
+
+	rcu_read_lock();
+
+	memcg = page_memcg_rcu(page);
+	lruvec = mem_cgroup_lruvec(memcg, page_pgdat(page));
+	active = lru_gen_is_active(lruvec, gen);
+
+	rcu_read_unlock();
+
+	return active;
+}
+
+/* Activate a page from page cache or swap cache after it's mapped. */
+static inline void lru_gen_activate_page(struct page *page, struct vm_area_struct *vma)
+{
+	if (!lru_gen_enabled() || PageActive(page))
+		return;
+
+	if (vma->vm_flags & (VM_LOCKED | VM_SPECIAL | VM_HUGETLB))
+		return;
+
+	activate_page(page);
+}
+
 /* Update multigenerational lru sizes in addition to active/inactive lru sizes. */
 static inline void lru_gen_update_size(struct page *page, struct lruvec *lruvec,
 				       int old_gen, int new_gen)
@@ -297,6 +340,15 @@ static inline bool page_clear_lru_gen(struct page *page, struct lruvec *lruvec)
 static inline bool lru_gen_enabled(void)
 {
 	return false;
+}
+
+static inline bool page_is_active(struct page *page, struct lruvec *lruvec)
+{
+	return PageActive(page);
+}
+
+static inline void lru_gen_activate_page(struct page *page, struct vm_area_struct *vma)
+{
 }
 
 static inline bool page_set_lru_gen(struct page *page, struct lruvec *lruvec, bool front)

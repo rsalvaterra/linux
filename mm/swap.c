@@ -322,7 +322,7 @@ void lru_note_cost_page(struct page *page)
 static void __activate_page(struct page *page, struct lruvec *lruvec,
 			    void *arg)
 {
-	if (PageLRU(page) && !PageActive(page) && !PageUnevictable(page)) {
+	if (PageLRU(page) && !PageUnevictable(page) && !page_is_active(page, lruvec)) {
 		int lru = page_lru_base_type(page);
 		int nr_pages = thp_nr_pages(page);
 
@@ -355,7 +355,7 @@ static bool need_activate_page_drain(int cpu)
 static void activate_page_on_lru(struct page *page)
 {
 	page = compound_head(page);
-	if (PageLRU(page) && !PageActive(page) && !PageUnevictable(page)) {
+	if (PageLRU(page) && !PageUnevictable(page) && !page_is_active(page, NULL)) {
 		struct pagevec *pvec;
 
 		local_lock(&lru_pvecs.lock);
@@ -446,7 +446,7 @@ void mark_page_accessed(struct page *page)
 		 * this list is never rotated or maintained, so marking an
 		 * evictable page accessed has no effect.
 		 */
-	} else if (!PageActive(page)) {
+	} else if (!page_is_active(page, NULL)) {
 		activate_page(page);
 		ClearPageReferenced(page);
 		workingset_activation(page);
@@ -482,15 +482,14 @@ void lru_cache_add(struct page *page)
 EXPORT_SYMBOL(lru_cache_add);
 
 /**
- * lru_cache_add_inactive_or_unevictable
+ * lru_cache_add_page_vma
  * @page:  the page to be added to LRU
  * @vma:   vma in which page is mapped for determining reclaimability
  *
- * Place @page on the inactive or unevictable LRU list, depending on its
- * evictability.
+ * Place @page on an LRU list, depending on its evictability.
  */
-void lru_cache_add_inactive_or_unevictable(struct page *page,
-					 struct vm_area_struct *vma)
+void lru_cache_add_page_vma(struct page *page, struct vm_area_struct *vma,
+			    bool faulting)
 {
 	bool unevictable;
 
@@ -507,6 +506,11 @@ void lru_cache_add_inactive_or_unevictable(struct page *page,
 		__mod_zone_page_state(page_zone(page), NR_MLOCK, nr_pages);
 		count_vm_events(UNEVICTABLE_PGMLOCKED, nr_pages);
 	}
+
+	/* multigenerational lru uses PageActive() to track page faults */
+	if (lru_gen_enabled() && !unevictable && faulting)
+		SetPageActive(page);
+
 	lru_cache_add(page);
 }
 
@@ -548,7 +552,7 @@ static void lru_deactivate_file_fn(struct page *page, struct lruvec *lruvec,
 	if (page_mapped(page))
 		return;
 
-	active = PageActive(page);
+	active = page_is_active(page, lruvec);
 	lru = page_lru_base_type(page);
 
 	del_page_from_lru_list(page, lruvec, lru + active);
@@ -582,7 +586,7 @@ static void lru_deactivate_file_fn(struct page *page, struct lruvec *lruvec,
 static void lru_deactivate_fn(struct page *page, struct lruvec *lruvec,
 			    void *arg)
 {
-	if (PageLRU(page) && PageActive(page) && !PageUnevictable(page)) {
+	if (PageLRU(page) && !PageUnevictable(page) && page_is_active(page, lruvec)) {
 		int lru = page_lru_base_type(page);
 		int nr_pages = thp_nr_pages(page);
 
@@ -700,7 +704,7 @@ void deactivate_file_page(struct page *page)
  */
 void deactivate_page(struct page *page)
 {
-	if (PageLRU(page) && PageActive(page) && !PageUnevictable(page)) {
+	if (PageLRU(page) && !PageUnevictable(page) && page_is_active(page, NULL)) {
 		struct pagevec *pvec;
 
 		local_lock(&lru_pvecs.lock);
