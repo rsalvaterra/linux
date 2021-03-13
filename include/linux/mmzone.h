@@ -272,6 +272,56 @@ enum lruvec_flags {
 					 */
 };
 
+struct lruvec;
+
+#define LRU_GEN_MASK	((BIT(LRU_GEN_WIDTH) - 1) << LRU_GEN_PGOFF)
+
+#ifdef CONFIG_LRU_GEN
+
+#define MAX_NR_GENS	CONFIG_NR_LRU_GENS
+
+/*
+ * For a common x86_64 configuration that has 3 zones and 7 generations,
+ * the size of this struct is 1112; and 4 zones and 15 generations, the
+ * size is 3048. Though it can be configured to have 6 zones and 63
+ * generations, there is unlikely a need for it.
+ */
+struct lru_gen {
+	/* aging increments max generation number */
+	unsigned long max_seq;
+	/* eviction increments min generation numbers */
+	unsigned long min_seq[ANON_AND_FILE];
+	/* birth time of each generation in jiffies */
+	unsigned long timestamps[MAX_NR_GENS];
+	/* multigenerational lru lists */
+	struct list_head lists[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
+	/* sizes of multigenerational lru lists in pages */
+	unsigned long sizes[MAX_NR_GENS][ANON_AND_FILE][MAX_NR_ZONES];
+	/* used with swappiness to determine which to reclaim */
+	unsigned long isolated[ANON_AND_FILE];
+#ifdef CONFIG_MEMCG
+	/* reclaim priority to compare with other memcgs */
+	atomic_t priority;
+#endif
+	/* whether multigenerational lru is enabled */
+	bool enabled[ANON_AND_FILE];
+};
+
+void lru_gen_init_lruvec(struct lruvec *lruvec);
+void lru_gen_set_state(bool enable, bool main, bool swap);
+
+#else /* CONFIG_LRU_GEN */
+
+static inline void lru_gen_init_lruvec(struct lruvec *lruvec)
+{
+}
+
+static inline void lru_gen_set_state(bool enable, bool main, bool swap)
+{
+}
+
+#endif /* CONFIG_LRU_GEN */
+
 struct lruvec {
 	struct list_head		lists[NR_LRU_LISTS];
 	/*
@@ -287,6 +337,10 @@ struct lruvec {
 	unsigned long			refaults[ANON_AND_FILE];
 	/* Various lruvec state flags (enum lruvec_flags) */
 	unsigned long			flags;
+#ifdef CONFIG_LRU_GEN
+	/* unevictable pages are on LRU_UNEVICTABLE */
+	struct lru_gen			evictable;
+#endif
 #ifdef CONFIG_MEMCG
 	struct pglist_data *pgdat;
 #endif

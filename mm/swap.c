@@ -311,6 +311,10 @@ void lru_note_cost(struct lruvec *lruvec, bool file, unsigned int nr_pages)
 
 void lru_note_cost_page(struct page *page)
 {
+	/* multigenerational lru doesn't use any heuristics */
+	if (lru_gen_enabled())
+		return;
+
 	lru_note_cost(mem_cgroup_page_lruvec(page, page_pgdat(page)),
 		      page_is_file_lru(page), thp_nr_pages(page));
 }
