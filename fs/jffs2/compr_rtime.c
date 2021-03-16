@@ -115,11 +115,7 @@ static struct jffs2_compressor jffs2_rtime_comp = {
     .compr = JFFS2_COMPR_RTIME,
     .compress = &jffs2_rtime_compress,
     .decompress = &jffs2_rtime_decompress,
-#ifdef JFFS2_RTIME_DISABLED
-    .disabled = 1,
-#else
     .disabled = 0,
-#endif
 };
 
 int jffs2_rtime_init(void)
