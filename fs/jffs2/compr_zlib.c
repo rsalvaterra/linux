@@ -193,11 +193,7 @@ static struct jffs2_compressor jffs2_zlib_comp = {
     .compr = JFFS2_COMPR_ZLIB,
     .compress = &jffs2_zlib_compress,
     .decompress = &jffs2_zlib_decompress,
-#ifdef JFFS2_ZLIB_DISABLED
-    .disabled = 1,
-#else
     .disabled = 0,
-#endif
 };
 
 int __init jffs2_zlib_init(void)
