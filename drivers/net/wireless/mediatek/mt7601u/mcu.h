@@ -70,7 +70,6 @@ enum mcu_calibrate {
 	MCU_CAL_LOFT,
 	MCU_CAL_TXIQ,
 	MCU_CAL_BW,
-	MCU_CAL_DPD,
 	MCU_CAL_RXIQ,
 	MCU_CAL_TXDCOC,
 };

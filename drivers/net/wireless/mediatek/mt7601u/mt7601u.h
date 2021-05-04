@@ -231,7 +231,6 @@ struct mt7601u_dev {
 
 	enum mt_temp_mode temp_mode;
 	int curr_temp;
-	int dpd_temp;
 	s8 raw_temp;
 	bool pll_lock_protect;
 
