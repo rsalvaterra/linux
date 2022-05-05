@@ -115,6 +115,16 @@ static const struct ieee80211_regdomain ath_world_regdom_67_68_6A_6C = {
 	)
 };
 
+static u16 ath_regd_get_eepromRD(struct ath_regulatory *reg)
+{
+	return reg->current_rd & ~WORLDWIDE_ROAMING_FLAG;
+}
+
+static bool is_default_regd(struct ath_regulatory *reg)
+{
+	return ath_regd_get_eepromRD(reg) == CTRY_DEFAULT;
+}
+
 static bool dynamic_country_user_possible(struct ath_regulatory *reg)
 {
 	if (IS_ENABLED(CONFIG_ATH_USER_REGD))
@@ -122,6 +132,9 @@ static bool dynamic_country_user_possible(struct ath_regulatory *reg)
 
 
 	if (IS_ENABLED(CONFIG_ATH_REG_DYNAMIC_USER_CERT_TESTING))
+		return true;
+
+	if (is_default_regd(reg))
 		return true;
 
 	switch (reg->country_code) {
@@ -207,11 +220,6 @@ static inline bool is_wwr_sku(u16 regd)
 	return ((regd & COUNTRY_ERD_FLAG) != COUNTRY_ERD_FLAG) &&
 		(((regd & WORLD_SKU_MASK) == WORLD_SKU_PREFIX) ||
 		(regd == WORLD));
-}
-
-static u16 ath_regd_get_eepromRD(struct ath_regulatory *reg)
-{
-	return reg->current_rd & ~WORLDWIDE_ROAMING_FLAG;
 }
 
 bool ath_is_world_regd(struct ath_regulatory *reg)
@@ -658,6 +666,9 @@ ath_regd_init_wiphy(struct ath_regulatory *reg,
 	wiphy->reg_notifier = reg_notifier;
 
 	if (IS_ENABLED(CONFIG_ATH_USER_REGD))
+		return 0;
+
+	if (is_default_regd(reg))
 		return 0;
 
 	wiphy->regulatory_flags |= REGULATORY_STRICT_REG |
