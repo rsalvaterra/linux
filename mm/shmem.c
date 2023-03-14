@@ -570,8 +570,8 @@ static int shmem_confirm_swap(struct address_space *mapping, pgoff_t index,
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 /* ifdef here to avoid bloating shmem.o when not necessary */
 
-static int shmem_huge __read_mostly = SHMEM_HUGE_NEVER;
-static int tmpfs_huge __read_mostly = SHMEM_HUGE_NEVER;
+static int shmem_huge __read_mostly = SHMEM_HUGE_WITHIN_SIZE;
+static int tmpfs_huge __read_mostly = SHMEM_HUGE_WITHIN_SIZE;
 
 /**
  * shmem_mapping_size_orders - Get allowable folio orders for the given file size.
