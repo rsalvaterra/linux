@@ -492,16 +492,6 @@ static int __init hugepage_init(void)
 	if (err)
 		goto err_split_shrinker;
 
-	/*
-	 * By default disable transparent hugepages on smaller systems,
-	 * where the extra memory used could hurt more than TLB overhead
-	 * is likely to save.  The admin can still enable it through /sys.
-	 */
-	if (totalram_pages() < (512 << (20 - PAGE_SHIFT))) {
-		transparent_hugepage_flags = 0;
-		return 0;
-	}
-
 	err = start_stop_khugepaged();
 	if (err)
 		goto err_khugepaged;
