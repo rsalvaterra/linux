@@ -25,6 +25,7 @@
 #include "ethernet-mem.h"
 #include "ethernet-rx.h"
 #include "ethernet-tx.h"
+#include "ethernet-flow.h"
 #include "ethernet-mdio.h"
 #include "ethernet-util.h"
 
@@ -521,6 +522,7 @@ static const struct net_device_ops cvm_oct_npi_netdev_ops = {
 	.ndo_init		= cvm_oct_common_init,
 	.ndo_uninit		= cvm_oct_common_uninit,
 	.ndo_start_xmit		= cvm_oct_xmit,
+	.ndo_setup_tc		= cvm_oct_setup_tc,
 	.ndo_set_rx_mode	= cvm_oct_common_set_multicast_list,
 	.ndo_set_mac_address	= cvm_oct_common_set_mac_address,
 	.ndo_eth_ioctl		= cvm_oct_ioctl,
@@ -537,6 +539,7 @@ static const struct net_device_ops cvm_oct_xaui_netdev_ops = {
 	.ndo_open		= cvm_oct_xaui_open,
 	.ndo_stop		= cvm_oct_common_stop,
 	.ndo_start_xmit		= cvm_oct_xmit,
+	.ndo_setup_tc		= cvm_oct_setup_tc,
 	.ndo_set_rx_mode	= cvm_oct_common_set_multicast_list,
 	.ndo_set_mac_address	= cvm_oct_common_set_mac_address,
 	.ndo_eth_ioctl		= cvm_oct_ioctl,
@@ -553,6 +556,7 @@ static const struct net_device_ops cvm_oct_sgmii_netdev_ops = {
 	.ndo_open		= cvm_oct_sgmii_open,
 	.ndo_stop		= cvm_oct_common_stop,
 	.ndo_start_xmit		= cvm_oct_xmit,
+	.ndo_setup_tc		= cvm_oct_setup_tc,
 	.ndo_set_rx_mode	= cvm_oct_common_set_multicast_list,
 	.ndo_set_mac_address	= cvm_oct_common_set_mac_address,
 	.ndo_eth_ioctl		= cvm_oct_ioctl,
@@ -567,6 +571,7 @@ static const struct net_device_ops cvm_oct_spi_netdev_ops = {
 	.ndo_init		= cvm_oct_spi_init,
 	.ndo_uninit		= cvm_oct_spi_uninit,
 	.ndo_start_xmit		= cvm_oct_xmit,
+	.ndo_setup_tc		= cvm_oct_setup_tc,
 	.ndo_set_rx_mode	= cvm_oct_common_set_multicast_list,
 	.ndo_set_mac_address	= cvm_oct_common_set_mac_address,
 	.ndo_eth_ioctl		= cvm_oct_ioctl,
@@ -583,6 +588,7 @@ static const struct net_device_ops cvm_oct_rgmii_netdev_ops = {
 	.ndo_open		= cvm_oct_rgmii_open,
 	.ndo_stop		= cvm_oct_common_stop,
 	.ndo_start_xmit		= cvm_oct_xmit,
+	.ndo_setup_tc		= cvm_oct_setup_tc,
 	.ndo_set_rx_mode	= cvm_oct_common_set_multicast_list,
 	.ndo_set_mac_address	= cvm_oct_common_set_mac_address,
 	.ndo_eth_ioctl		= cvm_oct_ioctl,

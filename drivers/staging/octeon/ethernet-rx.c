@@ -28,6 +28,7 @@
 #include "ethernet-defines.h"
 #include "ethernet-mem.h"
 #include "ethernet-rx.h"
+#include "ethernet-flow.h"
 #include "ethernet-util.h"
 
 static atomic_t oct_rx_ready = ATOMIC_INIT(0);
@@ -328,6 +329,16 @@ static int cvm_oct_poll(struct oct_rx_group *rx_group, int budget)
 			 * currently up.
 			 */
 			if (likely(dev->flags & IFF_UP)) {
+				/*
+				 * Established flows can be rewritten here
+				 * and handed to the PKO. A miss falls
+				 * through to the normal stack path.
+				 */
+				if (READ_ONCE(cvm_oct_flow_shortcut) &&
+				    packet_not_copied &&
+				    cvm_oct_flow_receive(dev, skb, work))
+					goto receive_done;
+
 				skb->protocol = eth_type_trans(skb, dev);
 				skb->dev = dev;
 
@@ -362,9 +373,12 @@ static int cvm_oct_poll(struct oct_rx_group *rx_group, int budget)
 					   port);
 			dev_kfree_skb_irq(skb);
 		}
+receive_done:
 		/*
 		 * Check to see if the skbuff and work share the same
-		 * packet buffer.
+		 * packet buffer. The shortcut also lands here: it has
+		 * handed the skb to cvm_oct_xmit, and this FPA buffer
+		 * still has to be replaced.
 		 */
 		if (likely(packet_not_copied)) {
 			/*
